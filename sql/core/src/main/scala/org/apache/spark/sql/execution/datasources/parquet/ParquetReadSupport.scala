@@ -49,15 +49,18 @@ import org.apache.spark.sql.types._
  * Due to this reason, we no longer rely on [[ReadContext]] to pass requested schema from [[init()]]
  * to [[prepareForRead()]], but use a private `var` for simplicity.
  */
-private[parquet] class ParquetReadSupport(val convertTz: Option[TimeZone])
-    extends ReadSupport[UnsafeRow] with Logging {
+class ParquetReadSupport(
+    val convertTz: Option[TimeZone], //Option[ZoneId],
+    enableVectorizedReader: Boolean = false,
+    rebaseDateTime: Boolean = false)
+  extends ReadSupport[UnsafeRow] with Logging {
   private var catalystRequestedSchema: StructType = _
 
   def this() {
     // We need a zero-arg constructor for SpecificParquetRecordReaderBase.  But that is only
-    // used in the vectorized reader, where we get the convertTz value directly, and the value here
-    // is ignored.
-    this(None)
+    // used in the vectorized reader, where we get the convertTz/rebaseDateTime value directly,
+    // and the values here are ignored.
+    this(None, enableVectorizedReader = false, rebaseDateTime = false)
   }
 
   /**
@@ -65,15 +68,20 @@ private[parquet] class ParquetReadSupport(val convertTz: Option[TimeZone])
    * readers.  Responsible for figuring out Parquet requested schema used for column pruning.
    */
   override def init(context: InitContext): ReadContext = {
+    val conf = context.getConfiguration
     catalystRequestedSchema = {
-      val conf = context.getConfiguration
       val schemaString = conf.get(ParquetReadSupport.SPARK_ROW_REQUESTED_SCHEMA)
       assert(schemaString != null, "Parquet requested schema not set.")
       StructType.fromString(schemaString)
     }
 
-    val caseSensitive = context.getConfiguration.getBoolean(SQLConf.CASE_SENSITIVE.key,
+    val caseSensitive = conf.getBoolean(SQLConf.CASE_SENSITIVE.key,
       SQLConf.CASE_SENSITIVE.defaultValue.get)
+    val schemaPruningEnabled = conf.getBoolean(SQLConf.NESTED_SCHEMA_PRUNING_ENABLED.key,
+      SQLConf.NESTED_SCHEMA_PRUNING_ENABLED.defaultValue.get)
+    val parquetFileSchema = context.getFileSchema
+    val parquetClippedSchema = ParquetReadSupport.clipParquetSchema(parquetFileSchema,
+      catalystRequestedSchema, caseSensitive)
     val parquetRequestedSchema = ParquetReadSupport.clipParquetSchema(
       context.getFileSchema, catalystRequestedSchema, caseSensitive)
 
@@ -107,11 +115,12 @@ private[parquet] class ParquetReadSupport(val convertTz: Option[TimeZone])
       parquetRequestedSchema,
       ParquetReadSupport.expandUDT(catalystRequestedSchema),
       new ParquetToSparkSchemaConverter(conf),
-      convertTz)
+      convertTz)//,rebaseDateTime)
+      .asInstanceOf[RecordMaterializer[UnsafeRow]]
   }
 }
 
-private[parquet] object ParquetReadSupport {
+object ParquetReadSupport {
   val SPARK_ROW_REQUESTED_SCHEMA = "org.apache.spark.sql.parquet.row.requested_schema"
 
   val SPARK_METADATA_KEY = "org.apache.spark.sql.parquet.row.metadata"

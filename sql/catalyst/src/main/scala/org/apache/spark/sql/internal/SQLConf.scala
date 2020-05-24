@@ -1591,6 +1591,46 @@ object SQLConf {
        .doc("When true, use legacy MySqlServer SMALLINT and REAL type mapping.")
        .booleanConf
        .createWithDefault(false)
+
+  val NESTED_PREDICATE_PUSHDOWN_ENABLED =
+    buildConf("spark.sql.optimizer.nestedPredicatePushdown.enabled")
+      .internal()
+      .doc("When true, Spark tries to push down predicates for nested columns and or names " +
+        "containing `dots` to data sources. Currently, Parquet implements both optimizations " +
+        "while ORC only supports predicates for names containing `dots`. The other data sources" +
+        "don't support this feature yet.")
+      //      .version("3.0.0")
+      .booleanConf
+      .createWithDefault(true)
+
+  //  val SERIALIZER_NESTED_SCHEMA_PRUNING_ENABLED =
+  //    buildConf("spark.sql.optimizer.serializer.nestedSchemaPruning.enabled")
+  //      .internal()
+  //      .doc("Prune nested fields from object serialization operator which are unnecessary in " +
+  //        "satisfying a query. This optimization allows object serializers to avoid " +
+  //        "executing unnecessary nested expressions.")
+  //      //      .version("3.0.0")
+  //      .booleanConf
+  //      .createWithDefault(true)
+
+  val NESTED_PRUNING_ON_EXPRESSIONS =
+    buildConf("spark.sql.optimizer.expression.nestedPruning.enabled")
+      .internal()
+      .doc("Prune nested fields from expressions in an operator which are unnecessary in " +
+        "satisfying a query. Note that this optimization doesn't prune nested fields from " +
+        "physical data source scanning. For pruning nested fields from scanning, please use " +
+        "`spark.sql.optimizer.nestedSchemaPruning.enabled` config.")
+      //      .version("3.0.0")
+      .booleanConf
+      .createWithDefault(true)
+
+  //  val MAX_TO_STRING_FIELDS = buildConf("spark.sql.debug.maxToStringFields")
+  //    .doc("Maximum number of fields of sequence-like entries can be converted to strings " +
+  //      "in debug output. Any elements beyond the limit will be dropped and replaced by a" +
+  //      """ "... N more fields" placeholder.""")
+  //    .intConf
+  //    .createWithDefault(25)
+
 }
 
 /**
@@ -2164,4 +2204,14 @@ class SQLConf extends Serializable with Logging {
   def isModifiable(key: String): Boolean = {
     sqlConfEntries.containsKey(key) && !staticConfKeys.contains(key)
   }
+
+  def nestedPredicatePushdownEnabled: Boolean = getConf(NESTED_PREDICATE_PUSHDOWN_ENABLED)
+
+//  def serializerNestedSchemaPruningEnabled: Boolean =
+//    getConf(SERIALIZER_NESTED_SCHEMA_PRUNING_ENABLED)
+
+  def nestedPruningOnExpressions: Boolean = getConf(NESTED_PRUNING_ON_EXPRESSIONS)
+
+//  def maxToStringFields: Int = getConf(MAX_TO_STRING_FIELDS)
+
 }
